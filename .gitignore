@@ -18,3 +18,7 @@ __pycache__/
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Remove md files
+AGENTS.md
+INITIAL_CONTEXT.md
