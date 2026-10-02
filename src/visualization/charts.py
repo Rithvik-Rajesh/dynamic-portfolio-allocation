@@ -11,6 +11,7 @@ matplotlib.use("Agg")  # Draw to files; no window needed.
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from src.analysis.risk import drawdown_series
 from src.strategy.config import REGIME_LABELS, RegimeConfig
 
 REGIME_COLOURS = {
@@ -100,6 +101,34 @@ def plot_regime_summary(frequency: pd.DataFrame, behaviour: pd.DataFrame):
 
     for axis in (share_axis, vol_axis):
         axis.grid(axis="y", alpha=0.3)
+    figure.tight_layout()
+    return figure
+
+
+def plot_backtest(history: pd.DataFrame):
+    """Portfolio value, NIFTY weight (target vs actual) and drawdown over time."""
+    figure, (value_axis, weight_axis, drawdown_axis) = plt.subplots(
+        3, 1, figsize=(12, 9), sharex=True, gridspec_kw={"height_ratios": [3, 2, 2]}
+    )
+
+    value_axis.plot(history.index, history["portfolio_value"], color="black", linewidth=1)
+    value_axis.set_ylabel("Portfolio value (₹)")
+    value_axis.set_title("VIX strategy backtest")
+
+    weight_axis.step(history.index, history["tradable_target_weight"] * 100, where="post",
+                     color="#555555", linewidth=0.8, linestyle="--", label="Target")
+    weight_axis.plot(history.index, history["nifty_weight"] * 100, color="black",
+                     linewidth=0.8, label="Actual")
+    weight_axis.set_ylabel("NIFTY weight (%)")
+    weight_axis.set_ylim(0, 105)
+    weight_axis.legend(loc="lower left", frameon=False, fontsize=9)
+
+    drawdown = drawdown_series(history["portfolio_value"]) * 100
+    drawdown_axis.fill_between(history.index, drawdown, 0, color="#c0392b", alpha=0.4, linewidth=0)
+    drawdown_axis.set_ylabel("Drawdown (%)")
+
+    for axis in (value_axis, weight_axis, drawdown_axis):
+        axis.grid(alpha=0.3)
     figure.tight_layout()
     return figure
 

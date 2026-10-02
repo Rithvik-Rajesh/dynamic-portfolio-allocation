@@ -18,6 +18,7 @@ FIGURES_DIR = PROJECT_ROOT / "reports" / "figures"
 RAW_METADATA_FILE = RAW_DATA_DIR / "metadata.json"
 MARKET_DATA_FILE = PROCESSED_DATA_DIR / "market_data.csv"
 VIX_REGIMES_FILE = PROCESSED_DATA_DIR / "vix_regimes.csv"
+BACKTEST_FILE = PROCESSED_DATA_DIR / "backtest_vix_strategy.csv"
 
 # ---------------------------------------------------------------------------
 # Data source

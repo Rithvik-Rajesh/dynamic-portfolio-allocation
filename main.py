@@ -1,22 +1,24 @@
-"""Run the pipeline built so far (Milestones 1-3).
+"""Run the pipeline built so far (Milestones 1-6).
 
     uv run python main.py            # use cached raw data
     uv run python main.py --refresh  # re-download raw data first
 
-Steps: load raw data -> clean & align -> validate -> save processed data
--> VIX percentile & regimes -> regime analysis -> charts.
+Steps: load raw data -> clean & align -> validate -> VIX percentile & regimes
+-> target allocation -> backtest -> performance & risk metrics -> charts.
 """
 
 import argparse
 
 import pandas as pd
 
+from src.analysis.performance import summarise_performance
 from src.analysis.regime_analysis import (
     nifty_behaviour_by_regime,
     regime_changes,
     regime_frequency,
 )
-from src.config import FIGURES_DIR, MARKET_DATA_FILE, VIX_REGIMES_FILE
+from src.backtesting.engine import add_signal_columns, run_backtest
+from src.config import BACKTEST_FILE, FIGURES_DIR, MARKET_DATA_FILE, VIX_REGIMES_FILE
 from src.data.cleaner import build_market_data, save_market_data, unmatched_dates
 from src.data.loader import load_raw_data
 from src.data.validator import (
@@ -24,9 +26,11 @@ from src.data.validator import (
     describe_market_data,
     validate_market_data,
 )
-from src.strategy.config import RegimeConfig
+from src.strategy.allocation import add_target_allocation
+from src.strategy.config import AllocationConfig, BacktestConfig, RegimeConfig
 from src.strategy.regimes import add_vix_regimes
 from src.visualization.charts import (
+    plot_backtest,
     plot_market_with_regimes,
     plot_regime_summary,
     plot_vix_percentile,
@@ -38,19 +42,14 @@ def print_section(title: str) -> None:
     print(f"\n=== {title} ===")
 
 
-def main(refresh: bool = False) -> None:
-    pd.set_option("display.width", 160)
-    pd.set_option("display.max_columns", None)
-    pd.set_option("display.float_format", "{:.4f}".format)
-
-    # Milestone 1: raw data
+def prepare_market_data(refresh: bool) -> pd.DataFrame:
+    """Milestones 1-2: load raw data, clean, align, validate and save."""
     raw = load_raw_data(refresh=refresh)
     print_section("Raw data")
     for name, prices in raw.items():
         print(f"{name:>6}: {len(prices):,} rows, "
               f"{prices.index.min().date()} to {prices.index.max().date()}")
 
-    # Milestone 2: clean, align, validate
     market_data = build_market_data(raw["vix"], raw["nifty"])
     validate_market_data(market_data)
     save_market_data(market_data, MARKET_DATA_FILE)
@@ -62,9 +61,11 @@ def main(refresh: bool = False) -> None:
           f"{len(dropped['only_in_nifty'])} only in NIFTY")
     print(describe_market_data(market_data))
     print(f"Saved -> {MARKET_DATA_FILE}")
+    return market_data
 
-    # Milestone 3: VIX percentile, regimes, analysis
-    config = RegimeConfig()
+
+def analyse_regimes(market_data: pd.DataFrame, config: RegimeConfig) -> pd.DataFrame:
+    """Milestone 3: VIX percentile, regimes, regime analysis and charts."""
     regime_data = add_vix_regimes(market_data, config)
     regime_data.to_csv(VIX_REGIMES_FILE)
 
@@ -84,7 +85,42 @@ def main(refresh: bool = False) -> None:
     save_figure(plot_market_with_regimes(regime_data), FIGURES_DIR / "market_with_regimes.png")
     save_figure(plot_vix_percentile(regime_data, config), FIGURES_DIR / "vix_percentile.png")
     save_figure(plot_regime_summary(frequency, behaviour), FIGURES_DIR / "regime_summary.png")
-    print(f"Charts saved -> {FIGURES_DIR}")
+    return regime_data
+
+
+def backtest_strategy(regime_data: pd.DataFrame, allocation_config: AllocationConfig,
+                      backtest_config: BacktestConfig) -> pd.DataFrame:
+    """Milestones 4-6: target allocation, backtest and performance metrics."""
+    strategy_data = add_target_allocation(regime_data, allocation_config)
+    history = run_backtest(strategy_data, strategy_data["target_nifty_weight"], backtest_config)
+    history = add_signal_columns(history, strategy_data)
+    history.to_csv(BACKTEST_FILE)
+
+    print_section("Strategy")
+    print(allocation_config)
+    print(backtest_config)
+
+    print_section("Backtest performance (VIX strategy)")
+    metrics = summarise_performance(history, backtest_config.cash_annual_rate,
+                                    backtest_config.initial_capital)
+    for name, value in metrics.items():
+        shown = f"{value:,.4f}" if isinstance(value, float) else value
+        print(f"{name:>30}: {shown}")
+    print(f"Saved -> {BACKTEST_FILE}")
+
+    save_figure(plot_backtest(history), FIGURES_DIR / "backtest.png")
+    return history
+
+
+def main(refresh: bool = False) -> None:
+    pd.set_option("display.width", 160)
+    pd.set_option("display.max_columns", None)
+    pd.set_option("display.float_format", "{:.4f}".format)
+
+    market_data = prepare_market_data(refresh)
+    regime_data = analyse_regimes(market_data, RegimeConfig())
+    backtest_strategy(regime_data, AllocationConfig(), BacktestConfig())
+    print(f"\nCharts saved -> {FIGURES_DIR}")
 
 
 if __name__ == "__main__":
