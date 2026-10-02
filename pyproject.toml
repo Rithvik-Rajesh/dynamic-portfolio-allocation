@@ -1,9 +1,21 @@
 [project]
 name = "dynamic-portfolio-allocation"
 version = "0.1.0"
-description = "Add your description here"
+description = "India VIX-based dynamic NIFTY 50 allocation: strategy design, backtesting and risk-adjusted evaluation"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.2",
+    "pandas>=3.0.5",
     "yfinance>=1.6.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

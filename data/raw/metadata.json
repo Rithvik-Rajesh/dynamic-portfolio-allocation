@@ -1,0 +1,22 @@
+{
+  "vix": {
+    "ticker": "^INDIAVIX",
+    "source": "Yahoo Finance (via the yfinance package)",
+    "requested_start": "2015-01-01",
+    "requested_end_exclusive": "2026-01-01",
+    "first_date": "2015-01-01",
+    "last_date": "2025-12-31",
+    "rows": 2698,
+    "downloaded_at_utc": "2026-10-02 04:11:32"
+  },
+  "nifty": {
+    "ticker": "^NSEI",
+    "source": "Yahoo Finance (via the yfinance package)",
+    "requested_start": "2015-01-01",
+    "requested_end_exclusive": "2026-01-01",
+    "first_date": "2015-01-02",
+    "last_date": "2025-12-31",
+    "rows": 2708,
+    "downloaded_at_utc": "2026-10-02 04:11:32"
+  }
+}

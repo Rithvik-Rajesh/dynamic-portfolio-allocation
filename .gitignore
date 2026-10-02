@@ -15,6 +15,7 @@ __pycache__/
 # Environment variables / secrets
 .env
 .env.*
+.venv/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -22,3 +23,4 @@ __pycache__/
 # Remove md files
 AGENTS.md
 INITIAL_CONTEXT.md
+
