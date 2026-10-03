@@ -72,11 +72,15 @@ src/backtesting/costs.py      Transaction-cost model
 src/analysis/performance.py   Return, Sharpe, Sortino, trading metrics (Milestone 6)
 src/analysis/risk.py          Volatility, downside deviation, drawdowns
 src/analysis/regime_analysis.py   Regime frequency and NIFTY behaviour by regime
+src/analysis/benchmarks.py    Buy-and-hold and fixed-allocation benchmarks (Milestone 7)
+src/analysis/sensitivity.py   One-at-a-time parameter experiments (Milestone 8)
+src/analysis/walk_forward.py  Walk-forward validation (Milestone 9)
 src/visualization/charts.py   Charts
 tests/                        Unit tests
 data/raw/                     Cached raw downloads + metadata.json (committed)
 data/processed/               Generated datasets (not committed)
-reports/figures/              Generated charts (not committed)
+reports/figures/              Generated charts
+reports/tables/               Generated result tables (CSV)
 ```
 
 ## Data
@@ -125,3 +129,17 @@ All settings are passed to `src.pipeline.run_vix_strategy(market_data, regime_co
 - **Sortino**: mean daily excess return ÷ downside deviation × √252.
 - **Maximum drawdown**: largest fall from a running peak of portfolio value, with peak, trough and recovery dates.
 - **Trading**: number of trades, annual turnover (traded value ÷ average portfolio value per year), total costs. The initial investment counts as a trade.
+
+### Benchmarks (`src/analysis/benchmarks.py`)
+
+- **Buy-and-hold**: 100% NIFTY from the first day.
+- **Fixed allocation**: constant NIFTY weight (default 75%, `BenchmarkConfig.fixed_nifty_weight`), rebalanced with the same schedule and drift band as the strategy.
+- Benchmarks run through the same engine with the same `BacktestConfig` (capital, costs, cash rate, execution) over exactly the strategy's dates. Only the target weight differs.
+
+### Sensitivity experiments (`src/analysis/sensitivity.py`)
+
+One setting is changed at a time from the base settings: regime thresholds, allocation levels, percentile window, rebalancing frequency, drift band, transaction cost, cash rate, execution price and start year. Every variant is compared with the benchmarks over the same dates. The values tried are listed at the top of the module. The experiments measure robustness; they do not pick a best setting.
+
+### Walk-forward validation (`src/analysis/walk_forward.py`)
+
+For each test year 2019–2025: backtest 16 candidate settings (high threshold 70/75/80/90% × expanding/rolling-504d window × weekly/monthly rebalancing) on all data up to the previous year-end, freeze the one with the best Sharpe ratio, and test it on the unseen year. The fixed base rules and the benchmarks are tested on the same year. Each test year starts in cash on its first trading day (so all portfolios miss that day's move and pay one initial cost per year); yearly results are chained into one out-of-sample record.

@@ -14,6 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
 PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
 FIGURES_DIR = PROJECT_ROOT / "reports" / "figures"
+TABLES_DIR = PROJECT_ROOT / "reports" / "tables"
 
 RAW_METADATA_FILE = RAW_DATA_DIR / "metadata.json"
 MARKET_DATA_FILE = PROCESSED_DATA_DIR / "market_data.csv"

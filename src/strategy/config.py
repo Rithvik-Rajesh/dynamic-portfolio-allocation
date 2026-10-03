@@ -4,6 +4,7 @@ find, change and test.
 - RegimeConfig      how VIX percentiles become regimes        (Milestone 3)
 - AllocationConfig  how regimes become a target NIFTY weight   (Milestone 4)
 - BacktestConfig    how the portfolio is traded and costed     (Milestone 5)
+- BenchmarkConfig   which static portfolios it is compared to  (Milestone 7)
 
 All defaults are illustrative starting points, not "correct" values.
 """
@@ -163,3 +164,29 @@ class BacktestConfig:
         start, end = self.start_date, self.end_date
         if start is not None and end is not None and pd.Timestamp(start) >= pd.Timestamp(end):
             raise ValueError("start_date must be before end_date")
+
+
+@dataclass(frozen=True)
+class BenchmarkConfig:
+    """Static portfolios the strategy is compared against (Milestone 7).
+
+    fixed_nifty_weight  NIFTY weight of the fixed-allocation benchmark
+                        (0.75 = 75% NIFTY / 25% cash). Buy-and-hold (100%
+                        NIFTY) is always included.
+    """
+
+    fixed_nifty_weight: float = 0.75
+
+    def __post_init__(self):
+        if not 0 < self.fixed_nifty_weight < 1:
+            raise ValueError("fixed_nifty_weight must be strictly between 0 and 1")
+
+
+@dataclass(frozen=True)
+class StrategySettings:
+    """One complete set of strategy settings, used by experiments and
+    walk-forward validation to pass a whole configuration around."""
+
+    regime: RegimeConfig = RegimeConfig()
+    allocation: AllocationConfig = AllocationConfig()
+    backtest: BacktestConfig = BacktestConfig()

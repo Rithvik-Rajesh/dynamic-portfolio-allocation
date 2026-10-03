@@ -1,4 +1,5 @@
-"""Static charts for the VIX regime analysis (matplotlib).
+"""Static charts (matplotlib): VIX regimes, backtest, benchmarks, experiments
+and walk-forward validation.
 
 Each function returns a matplotlib Figure so it can be saved to a file now
 and shown in the dashboard later.
@@ -13,6 +14,15 @@ import pandas as pd
 
 from src.analysis.risk import drawdown_series
 from src.strategy.config import REGIME_LABELS, RegimeConfig
+
+# One colour per portfolio, used in every comparison chart.
+PORTFOLIO_COLOURS = {
+    "vix_strategy": "#000000",
+    "walk_forward_selected": "#000000",
+    "fixed_base_rules": "#7f7f7f",
+    "buy_and_hold": "#2f6db3",
+}
+OTHER_PORTFOLIO_COLOUR = "#b0b0b0"  # fixed-allocation benchmark
 
 REGIME_COLOURS = {
     "low": "#4c9f70",
@@ -128,6 +138,93 @@ def plot_backtest(history: pd.DataFrame):
     drawdown_axis.set_ylabel("Drawdown (%)")
 
     for axis in (value_axis, weight_axis, drawdown_axis):
+        axis.grid(alpha=0.3)
+    figure.tight_layout()
+    return figure
+
+
+def _portfolio_colour(name: str) -> str:
+    return PORTFOLIO_COLOURS.get(name, OTHER_PORTFOLIO_COLOUR)
+
+
+def _label(name: str) -> str:
+    """'buy_and_hold' -> 'Buy and hold', 'fixed_75' -> 'Fixed 75'."""
+    return name.replace("_", " ").capitalize()
+
+
+def plot_benchmark_comparison(values: pd.DataFrame):
+    """Growth of each portfolio (top, log scale) and its drawdown (bottom)."""
+    figure, (value_axis, drawdown_axis) = plt.subplots(
+        2, 1, figsize=(12, 8), sharex=True, gridspec_kw={"height_ratios": [3, 2]}
+    )
+    for name in values.columns:
+        colour = _portfolio_colour(name)
+        value_axis.plot(values.index, values[name], color=colour, linewidth=1, label=_label(name))
+        drawdown_axis.plot(values.index, drawdown_series(values[name]) * 100, color=colour,
+                           linewidth=0.8)
+
+    value_axis.set_yscale("log")
+    value_axis.set_ylabel("Portfolio value (₹, log scale)")
+    value_axis.set_title("VIX strategy vs benchmarks (same dates, costs and settings)")
+    value_axis.legend(loc="upper left", frameon=False)
+    drawdown_axis.set_ylabel("Drawdown (%)")
+    for axis in (value_axis, drawdown_axis):
+        axis.grid(alpha=0.3)
+    figure.tight_layout()
+    return figure
+
+
+def plot_sensitivity_overview(experiments: pd.DataFrame):
+    """For every experiment variant: strategy minus buy-and-hold in CAGR,
+    Sharpe and max drawdown. Bars to the right = strategy better."""
+    columns = [
+        ("cagr_vs_buy_and_hold", "CAGR difference (pct points)", 100),
+        ("sharpe_vs_buy_and_hold", "Sharpe ratio difference", 1),
+        ("max_drawdown_vs_buy_and_hold", "Max drawdown difference (pct points)", 100),
+    ]
+    labels = [f"{row.experiment}: {row.variant}" for row in experiments.itertuples()]
+    positions = range(len(experiments))
+
+    figure, axes = plt.subplots(1, 3, figsize=(15, 0.28 * len(experiments) + 1.5), sharey=True)
+    for axis, (column, title, scale) in zip(axes, columns):
+        gaps = experiments[column].astype(float) * scale
+        colours = ["#000000" if is_base else "#8c8c8c" for is_base in experiments["is_base"]]
+        axis.barh(positions, gaps, color=colours, height=0.7)
+        axis.axvline(0, color="black", linewidth=0.8)
+        axis.set_title(title, fontsize=10)
+        axis.grid(axis="x", alpha=0.3)
+
+    axes[0].set_yticks(list(positions), labels, fontsize=8)
+    axes[0].invert_yaxis()
+    figure.suptitle("Strategy minus buy-and-hold for each setting (black = base settings; "
+                    "right of zero = strategy better)", fontsize=11)
+    figure.tight_layout()
+    return figure
+
+
+def plot_walk_forward(folds: pd.DataFrame, chained_returns: pd.DataFrame, names: list[str]):
+    """Left: each portfolio's return in every test year. Right: the chained
+    out-of-sample growth of ₹1."""
+    figure, (year_axis, growth_axis) = plt.subplots(1, 2, figsize=(14, 5))
+
+    bar_width = 0.8 / len(names)
+    years = list(folds.index)
+    for i, name in enumerate(names):
+        offsets = [position + (i - (len(names) - 1) / 2) * bar_width for position in range(len(years))]
+        year_axis.bar(offsets, folds[f"{name}_return"] * 100, width=bar_width,
+                      color=_portfolio_colour(name), label=_label(name))
+        growth = (1 + chained_returns[name]).cumprod()
+        growth_axis.plot(growth.index, growth, color=_portfolio_colour(name), linewidth=1,
+                         linestyle="--" if name == "fixed_base_rules" else "-", label=_label(name))
+
+    year_axis.set_xticks(range(len(years)), years)
+    year_axis.axhline(0, color="black", linewidth=0.8)
+    year_axis.set_ylabel("Return in test year (%)")
+    year_axis.set_title("Out-of-sample return in each test year")
+    year_axis.legend(frameon=False, fontsize=8)
+    growth_axis.set_ylabel("Growth of ₹1")
+    growth_axis.set_title("Chained out-of-sample performance")
+    for axis in (year_axis, growth_axis):
         axis.grid(alpha=0.3)
     figure.tight_layout()
     return figure

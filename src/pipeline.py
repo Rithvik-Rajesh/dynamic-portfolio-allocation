@@ -13,7 +13,12 @@ import pandas as pd
 
 from src.backtesting.engine import add_signal_columns, run_backtest
 from src.strategy.allocation import add_target_allocation
-from src.strategy.config import AllocationConfig, BacktestConfig, RegimeConfig
+from src.strategy.config import (
+    AllocationConfig,
+    BacktestConfig,
+    RegimeConfig,
+    StrategySettings,
+)
 from src.strategy.regimes import add_vix_regimes
 
 
@@ -30,3 +35,8 @@ def run_vix_strategy(market_data: pd.DataFrame, regime_config: RegimeConfig,
     strategy_data = add_target_allocation(regime_data, allocation_config)
     history = run_backtest(strategy_data, strategy_data["target_nifty_weight"], backtest_config)
     return add_signal_columns(history, strategy_data)
+
+
+def run_settings(market_data: pd.DataFrame, settings: StrategySettings) -> pd.DataFrame:
+    """Same as `run_vix_strategy`, taking one StrategySettings bundle."""
+    return run_vix_strategy(market_data, settings.regime, settings.allocation, settings.backtest)
