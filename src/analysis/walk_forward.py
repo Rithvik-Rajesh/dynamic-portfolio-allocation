@@ -21,8 +21,6 @@ strategy and benchmarks equally. The yearly returns are then chained into
 one continuous out-of-sample record.
 """
 
-from dataclasses import replace
-
 import pandas as pd
 
 from src.analysis.benchmarks import BUY_AND_HOLD_NAME, fixed_allocation_name, run_benchmarks
@@ -117,14 +115,16 @@ def run_walk_forward(market_data: pd.DataFrame, base: StrategySettings,
     test_returns = []
 
     for year in range(first_test_year, last_test_year + 1):
-        scores = development_scores(market_data, candidates, f"{year - 1}-12-31", metric)
+        development_end = f"{year - 1}-12-31"
+        scores = development_scores(market_data, candidates, development_end, metric)
+        base_score = development_scores(market_data, {BASE_NAME: base}, development_end, metric)
         selected_label = select_candidate(scores)
         histories = run_test_year(market_data, candidates[selected_label], base, year,
                                   fixed_nifty_weight)
 
         row = {"test_year": year, "selected": selected_label,
                f"development_{metric}": scores[selected_label],
-               f"base_development_{metric}": development_base_score(market_data, base, year, metric)}
+               f"base_development_{metric}": base_score[BASE_NAME]}
         for name, history in histories.items():
             row[f"{name}_return"] = total_return(history["portfolio_return"])
             row[f"{name}_max_drawdown"] = max_drawdown(history["portfolio_value"])
@@ -135,14 +135,6 @@ def run_walk_forward(market_data: pd.DataFrame, base: StrategySettings,
 
     folds = pd.DataFrame(fold_rows).set_index("test_year")
     return folds, pd.concat(test_returns)
-
-
-def development_base_score(market_data: pd.DataFrame, base: StrategySettings, year: int,
-                           metric: str) -> float:
-    """Development score of the base rules, for reference next to the selected one."""
-    history = run_settings(market_data, with_period(base, None, f"{year - 1}-12-31"))
-    return summarise_performance(history, base.backtest.cash_annual_rate,
-                                 base.backtest.initial_capital)[metric]
 
 
 def out_of_sample_summary(chained_returns: pd.DataFrame, cash_annual_rate: float) -> pd.DataFrame:

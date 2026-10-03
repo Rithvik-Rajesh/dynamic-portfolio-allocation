@@ -14,6 +14,7 @@ import pandas as pd
 
 from src.analysis.risk import drawdown_series
 from src.strategy.config import REGIME_LABELS, RegimeConfig
+from src.visualization.tables import display_name
 
 # One colour per portfolio, used in every comparison chart.
 PORTFOLIO_COLOURS = {
@@ -42,7 +43,7 @@ def _shade_regimes(axis, regime: pd.Series) -> None:
     # and lasts until the next block starts (or the last date).
     block_starts = regime[regime != regime.shift()]
     block_ends = list(block_starts.index[1:]) + [regime.index[-1]]
-    for (start, label), end in zip(block_starts.items(), block_ends):
+    for (start, label), end in zip(block_starts.items(), block_ends, strict=True):
         axis.axvspan(start, end, color=REGIME_COLOURS[label], alpha=0.25, linewidth=0)
 
 
@@ -55,20 +56,24 @@ def _regime_legend(axis) -> None:
                 loc="upper left", ncol=4, frameon=False, fontsize=9)
 
 
-def plot_market_with_regimes(regime_data: pd.DataFrame):
-    """NIFTY (top) and India VIX (bottom), background shaded by VIX regime."""
+def plot_market_with_regimes(regime_data: pd.DataFrame, show_regimes: bool = True):
+    """NIFTY (top) and India VIX (bottom), optionally shaded by VIX regime."""
     figure, (nifty_axis, vix_axis) = plt.subplots(
         2, 1, figsize=(12, 7), sharex=True, gridspec_kw={"height_ratios": [3, 2]}
     )
 
     for axis in (nifty_axis, vix_axis):
-        _shade_regimes(axis, regime_data["vix_regime"])
+        if show_regimes:
+            _shade_regimes(axis, regime_data["vix_regime"])
         axis.grid(alpha=0.3)
 
     nifty_axis.plot(regime_data.index, regime_data["nifty"], color="black", linewidth=1)
     nifty_axis.set_ylabel("NIFTY 50")
-    nifty_axis.set_title("NIFTY 50 and India VIX, shaded by VIX regime")
-    _regime_legend(nifty_axis)
+    if show_regimes:
+        nifty_axis.set_title("NIFTY 50 and India VIX, shaded by VIX regime")
+        _regime_legend(nifty_axis)
+    else:
+        nifty_axis.set_title("NIFTY 50 and India VIX (daily close)")
 
     vix_axis.plot(regime_data.index, regime_data["vix"], color="black", linewidth=1)
     vix_axis.set_ylabel("India VIX")
@@ -147,11 +152,6 @@ def _portfolio_colour(name: str) -> str:
     return PORTFOLIO_COLOURS.get(name, OTHER_PORTFOLIO_COLOUR)
 
 
-def _label(name: str) -> str:
-    """'buy_and_hold' -> 'Buy and hold', 'fixed_75' -> 'Fixed 75'."""
-    return name.replace("_", " ").capitalize()
-
-
 def plot_benchmark_comparison(values: pd.DataFrame):
     """Growth of each portfolio (top, log scale) and its drawdown (bottom)."""
     figure, (value_axis, drawdown_axis) = plt.subplots(
@@ -159,9 +159,10 @@ def plot_benchmark_comparison(values: pd.DataFrame):
     )
     for name in values.columns:
         colour = _portfolio_colour(name)
-        value_axis.plot(values.index, values[name], color=colour, linewidth=1, label=_label(name))
-        drawdown_axis.plot(values.index, drawdown_series(values[name]) * 100, color=colour,
-                           linewidth=0.8)
+        value_axis.plot(values.index, values[name], color=colour, linewidth=1,
+                        label=display_name(name))
+        drawdown = drawdown_series(values[name]) * 100
+        drawdown_axis.plot(values.index, drawdown, color=colour, linewidth=0.8)
 
     value_axis.set_yscale("log")
     value_axis.set_ylabel("Portfolio value (₹, log scale)")
@@ -186,7 +187,7 @@ def plot_sensitivity_overview(experiments: pd.DataFrame):
     positions = range(len(experiments))
 
     figure, axes = plt.subplots(1, 3, figsize=(15, 0.28 * len(experiments) + 1.5), sharey=True)
-    for axis, (column, title, scale) in zip(axes, columns):
+    for axis, (column, title, scale) in zip(axes, columns, strict=True):
         gaps = experiments[column].astype(float) * scale
         colours = ["#000000" if is_base else "#8c8c8c" for is_base in experiments["is_base"]]
         axis.barh(positions, gaps, color=colours, height=0.7)
@@ -210,12 +211,14 @@ def plot_walk_forward(folds: pd.DataFrame, chained_returns: pd.DataFrame, names:
     bar_width = 0.8 / len(names)
     years = list(folds.index)
     for i, name in enumerate(names):
-        offsets = [position + (i - (len(names) - 1) / 2) * bar_width for position in range(len(years))]
+        offsets = [position + (i - (len(names) - 1) / 2) * bar_width
+                   for position in range(len(years))]
         year_axis.bar(offsets, folds[f"{name}_return"] * 100, width=bar_width,
-                      color=_portfolio_colour(name), label=_label(name))
+                      color=_portfolio_colour(name), label=display_name(name))
         growth = (1 + chained_returns[name]).cumprod()
+        line_style = "--" if name == "fixed_base_rules" else "-"
         growth_axis.plot(growth.index, growth, color=_portfolio_colour(name), linewidth=1,
-                         linestyle="--" if name == "fixed_base_rules" else "-", label=_label(name))
+                         linestyle=line_style, label=display_name(name))
 
     year_axis.set_xticks(range(len(years)), years)
     year_axis.axhline(0, color="black", linewidth=0.8)
@@ -226,6 +229,27 @@ def plot_walk_forward(folds: pd.DataFrame, chained_returns: pd.DataFrame, names:
     growth_axis.set_title("Chained out-of-sample performance")
     for axis in (year_axis, growth_axis):
         axis.grid(alpha=0.3)
+    figure.tight_layout()
+    return figure
+
+
+def plot_calendar_year_returns(yearly_returns: pd.DataFrame):
+    """Grouped bars: each portfolio's return in each calendar year."""
+    figure, axis = plt.subplots(figsize=(12, 4.5))
+    names = list(yearly_returns.columns)
+    bar_width = 0.8 / len(names)
+    for i, name in enumerate(names):
+        offsets = [position + (i - (len(names) - 1) / 2) * bar_width
+                   for position in range(len(yearly_returns))]
+        axis.bar(offsets, yearly_returns[name] * 100, width=bar_width,
+                 color=_portfolio_colour(name), label=display_name(name))
+
+    axis.set_xticks(range(len(yearly_returns)), yearly_returns.index)
+    axis.axhline(0, color="black", linewidth=0.8)
+    axis.set_ylabel("Return (%)")
+    axis.set_title("Calendar-year returns (first and last years may be partial)")
+    axis.legend(frameon=False, fontsize=9)
+    axis.grid(axis="y", alpha=0.3)
     figure.tight_layout()
     return figure
 

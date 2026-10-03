@@ -40,31 +40,49 @@ India VIX + NIFTY 50 Data
 
 ## Setup
 
-Requires Python 3.14 and [uv](https://docs.astral.sh/uv/).
+Requires Python 3.14 and [uv](https://docs.astral.sh/uv/). The raw data is committed, so no download is needed.
 
 ```bash
-uv sync                      # create .venv and install dependencies
-uv run python main.py        # run the pipeline (uses cached raw data)
-uv run pytest                # run the tests
+uv sync                                  # create .venv and install dependencies
+uv run streamlit run app/streamlit_app.py   # open the dashboard
+uv run python main.py                    # run the full research pipeline, save tables + charts
+uv run pytest                            # run the tests (~35 s; dashboard tests are the slowest)
 ```
 
-Without uv: `pip install -r requirements.txt pytest`, then `python main.py`.
+Without uv: `pip install -r requirements.txt pytest`, then use `streamlit run ...`, `python main.py` and `pytest` directly.
 
 `python main.py --refresh` re-downloads the raw data from Yahoo Finance.
+
+## Dashboard
+
+`app/streamlit_app.py`. All settings are in the sidebar: investment amount and period, percentile window (expanding / rolling and its length), warm-up, regime thresholds, NIFTY weight per regime, rebalancing frequency, drift band, next-day open or close execution, transaction cost, cash rate, and the fixed-benchmark weight. Invalid combinations show an error instead of running.
+
+| Tab | Shows |
+|---|---|
+| Overview | Research question, how the strategy works, headline result vs buy-and-hold, current settings |
+| Data | Source, coverage, NIFTY and VIX history, descriptive statistics |
+| Strategy | Allocation rule, regimes over time, VIX percentile, NIFTY behaviour by regime |
+| Backtest | Portfolio value, target vs actual NIFTY weight, drawdown, trade list, CSV download |
+| Risk & Performance | All metrics, calendar-year returns |
+| Comparison | Strategy vs buy-and-hold vs fixed allocation |
+| Experiments | One-at-a-time sensitivity experiments around the current settings (button, ~20 s) |
+| Walk-forward | Out-of-sample validation around the current settings (button, ~10 s) |
+
+The app has no financial logic of its own; it calls the same functions as `main.py`.
 
 ## Repository Structure
 
 ```text
-main.py                       Runs the pipeline built so far
-src/config.py                 Paths, tickers, study period
+main.py                       Runs the full pipeline, saves tables and charts
+app/streamlit_app.py          Dashboard (Milestone 10)
+src/config.py                 Paths, tickers, study period, output locations
 src/data/loader.py            Download + cache raw data (Milestone 1)
 src/data/cleaner.py           Clean and align VIX/NIFTY (Milestone 2)
 src/data/validator.py         Validation checks + descriptive stats (Milestone 2)
-src/config.py                 (also) output file locations
 src/rates.py                  Cash / risk-free rate conversion (shared)
 src/pipeline.py               run_vix_strategy(): one call, any settings
-src/strategy/config.py        ALL strategy + backtest assumptions
-src/strategy/regimes.py       Expanding VIX percentile + regimes (Milestone 3)
+src/strategy/config.py        ALL strategy, backtest and benchmark assumptions
+src/strategy/regimes.py       VIX percentile (expanding/rolling) + regimes (Milestone 3)
 src/strategy/allocation.py    Regime -> target NIFTY/cash weight (Milestone 4)
 src/backtesting/engine.py     Day-by-day portfolio simulation (Milestone 5)
 src/backtesting/portfolio.py  Rebalancing arithmetic and drift rule
@@ -75,13 +93,23 @@ src/analysis/regime_analysis.py   Regime frequency and NIFTY behaviour by regime
 src/analysis/benchmarks.py    Buy-and-hold and fixed-allocation benchmarks (Milestone 7)
 src/analysis/sensitivity.py   One-at-a-time parameter experiments (Milestone 8)
 src/analysis/walk_forward.py  Walk-forward validation (Milestone 9)
-src/visualization/charts.py   Charts
-tests/                        Unit tests
-data/raw/                     Cached raw downloads + metadata.json (committed)
-data/processed/               Generated datasets (not committed)
+src/visualization/charts.py   Charts (matplotlib)
+src/visualization/tables.py   Display formatting for metric tables
+tests/                        Unit, look-ahead, end-to-end and dashboard tests
+data/raw/                     Cached raw downloads + metadata.json
+data/processed/               Generated datasets
 reports/figures/              Generated charts
 reports/tables/               Generated result tables (CSV)
 ```
+
+## Testing
+
+`uv run pytest` runs 111 tests. Besides hand-calculated checks of every metric and of the cost and rebalancing arithmetic, they include:
+
+- **Look-ahead tests**: replacing all data after a cut-off date must not change any VIX percentile, any walk-forward selection, or any row of a full backtest up to that date.
+- **Timing tests**: a signal can never earn the market move of the day it was generated.
+- **Benchmark tests**: benchmarks use exactly the strategy's dates; buy-and-hold tracks NIFTY.
+- **Dashboard tests**: the app runs headlessly, reacts to its inputs, and shows an error for invalid settings.
 
 ## Data
 

@@ -49,6 +49,13 @@ def cagr(returns: pd.Series) -> float:
     return float((1 + total_return(returns)) ** (1 / years) - 1)
 
 
+def calendar_year_returns(returns: pd.Series) -> pd.Series:
+    """Compounded return within each calendar year (partial years included)."""
+    yearly = (1 + returns).groupby(returns.index.year).prod() - 1
+    yearly.index.name = "year"
+    return yearly
+
+
 # --- Risk-adjusted -----------------------------------------------------------
 
 def excess_returns(returns: pd.Series, risk_free_annual_rate: float) -> pd.Series:

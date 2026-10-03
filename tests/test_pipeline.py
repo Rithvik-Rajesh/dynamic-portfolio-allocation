@@ -46,3 +46,26 @@ def test_every_setting_combination_runs():
                 assert history["portfolio_value"].iloc[0] > 0
                 assert (history["cash"] >= 0).all()
                 assert history["nifty_weight"].between(0, 1).all()
+
+
+def test_full_backtest_has_no_look_ahead():
+    """End-to-end check: if everything after a cut-off date is replaced, every
+    row of the backtest up to the cut-off (signal, trades, portfolio value)
+    must be unchanged."""
+    market = synthetic_market(days=600)
+    settings = (RegimeConfig(min_history=100), AllocationConfig(),
+                BacktestConfig(rebalance_frequency="daily", drift_tolerance=0.0))
+    cutoff = market.index[450]
+
+    altered = market.copy()
+    future = altered.index > cutoff
+    altered.loc[future, "vix"] = 80.0
+    altered.loc[future, "nifty"] = altered.loc[future, "nifty"] * 0.3
+    altered.loc[future, "nifty_open"] = altered.loc[future, "nifty_open"] * 0.3
+    altered["nifty_return"] = altered["nifty"].pct_change()
+
+    original = run_vix_strategy(market, *settings)
+    changed = run_vix_strategy(altered, *settings)
+
+    pd.testing.assert_frame_equal(original.loc[:cutoff], changed.loc[:cutoff])
+    assert not original.loc[cutoff:].equals(changed.loc[cutoff:])  # the change did matter
