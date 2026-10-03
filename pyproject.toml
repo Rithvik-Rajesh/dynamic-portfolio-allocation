@@ -3,7 +3,7 @@ name = "dynamic-portfolio-allocation"
 version = "0.1.0"
 description = "India VIX-based dynamic NIFTY 50 allocation: strategy design, backtesting and risk-adjusted evaluation"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = [
     "matplotlib>=3.11.2",
     "numpy>=2.5.2",

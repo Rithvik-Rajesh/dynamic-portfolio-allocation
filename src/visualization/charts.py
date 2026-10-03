@@ -16,14 +16,35 @@ from src.analysis.risk import drawdown_series
 from src.strategy.config import REGIME_LABELS, RegimeConfig
 from src.visualization.tables import display_name
 
+# Every colour below is a mid-tone that stays readable on BOTH a white and a
+# dark page, so the dashboard's light/dark switch never needs a redraw.
+STRATEGY_COLOUR = "#d9632b"   # orange: the VIX strategy
+MARKET_COLOUR = "#3a7bd5"     # blue: NIFTY, India VIX and buy-and-hold
+MID_GREY = "#8c8c8c"          # targets, thresholds, secondary bars
+INK = "#7a7a7a"               # text, axes and zero lines in the dashboard
+
+# Transparent background and mid-grey text, for charts shown in the dashboard.
+# (Charts saved by main.py keep matplotlib's normal white background.)
+DASHBOARD_STYLE = {
+    "figure.facecolor": "none",
+    "axes.facecolor": "none",
+    "savefig.facecolor": "none",
+    "text.color": INK,
+    "axes.labelcolor": INK,
+    "axes.edgecolor": INK,
+    "xtick.color": INK,
+    "ytick.color": INK,
+    "grid.color": INK,
+}
+
 # One colour per portfolio, used in every comparison chart.
 PORTFOLIO_COLOURS = {
-    "vix_strategy": "#000000",
-    "walk_forward_selected": "#000000",
-    "fixed_base_rules": "#7f7f7f",
-    "buy_and_hold": "#2f6db3",
+    "vix_strategy": STRATEGY_COLOUR,
+    "walk_forward_selected": STRATEGY_COLOUR,
+    "fixed_base_rules": MID_GREY,
+    "buy_and_hold": MARKET_COLOUR,
 }
-OTHER_PORTFOLIO_COLOUR = "#b0b0b0"  # fixed-allocation benchmark
+OTHER_PORTFOLIO_COLOUR = "#2e9e83"  # teal: the fixed-allocation benchmark
 
 REGIME_COLOURS = {
     "low": "#4c9f70",
@@ -67,7 +88,7 @@ def plot_market_with_regimes(regime_data: pd.DataFrame, show_regimes: bool = Tru
             _shade_regimes(axis, regime_data["vix_regime"])
         axis.grid(alpha=0.3)
 
-    nifty_axis.plot(regime_data.index, regime_data["nifty"], color="black", linewidth=1)
+    nifty_axis.plot(regime_data.index, regime_data["nifty"], color=MARKET_COLOUR, linewidth=1)
     nifty_axis.set_ylabel("NIFTY 50")
     if show_regimes:
         nifty_axis.set_title("NIFTY 50 and India VIX, shaded by VIX regime")
@@ -75,7 +96,7 @@ def plot_market_with_regimes(regime_data: pd.DataFrame, show_regimes: bool = Tru
     else:
         nifty_axis.set_title("NIFTY 50 and India VIX (daily close)")
 
-    vix_axis.plot(regime_data.index, regime_data["vix"], color="black", linewidth=1)
+    vix_axis.plot(regime_data.index, regime_data["vix"], color=MARKET_COLOUR, linewidth=1)
     vix_axis.set_ylabel("India VIX")
 
     figure.tight_layout()
@@ -86,11 +107,11 @@ def plot_vix_percentile(regime_data: pd.DataFrame, config: RegimeConfig):
     """Expanding VIX percentile with the regime thresholds marked."""
     figure, axis = plt.subplots(figsize=(12, 4))
 
-    axis.plot(regime_data.index, regime_data["vix_percentile"], color="black", linewidth=0.8)
+    axis.plot(regime_data.index, regime_data["vix_percentile"], color=MARKET_COLOUR, linewidth=0.8)
     for threshold in (config.low_threshold, config.high_threshold, config.extreme_threshold):
-        axis.axhline(threshold, color="#555555", linestyle="--", linewidth=0.8)
+        axis.axhline(threshold, color=MID_GREY, linestyle="--", linewidth=0.8)
         axis.text(regime_data.index[-1], threshold, f" {threshold:.0%}",
-                  va="center", fontsize=9, color="#555555")
+                  va="center", fontsize=9, color=MID_GREY)
 
     axis.set_ylim(0, 1.02)
     axis.set_ylabel("VIX percentile (expanding)")
@@ -126,13 +147,13 @@ def plot_backtest(history: pd.DataFrame):
         3, 1, figsize=(12, 9), sharex=True, gridspec_kw={"height_ratios": [3, 2, 2]}
     )
 
-    value_axis.plot(history.index, history["portfolio_value"], color="black", linewidth=1)
+    value_axis.plot(history.index, history["portfolio_value"], color=STRATEGY_COLOUR, linewidth=1)
     value_axis.set_ylabel("Portfolio value (₹)")
     value_axis.set_title("VIX strategy backtest")
 
     weight_axis.step(history.index, history["tradable_target_weight"] * 100, where="post",
-                     color="#555555", linewidth=0.8, linestyle="--", label="Target")
-    weight_axis.plot(history.index, history["nifty_weight"] * 100, color="black",
+                     color=MID_GREY, linewidth=0.8, linestyle="--", label="Target")
+    weight_axis.plot(history.index, history["nifty_weight"] * 100, color=STRATEGY_COLOUR,
                      linewidth=0.8, label="Actual")
     weight_axis.set_ylabel("NIFTY weight (%)")
     weight_axis.set_ylim(0, 105)
@@ -189,15 +210,15 @@ def plot_sensitivity_overview(experiments: pd.DataFrame):
     figure, axes = plt.subplots(1, 3, figsize=(15, 0.28 * len(experiments) + 1.5), sharey=True)
     for axis, (column, title, scale) in zip(axes, columns, strict=True):
         gaps = experiments[column].astype(float) * scale
-        colours = ["#000000" if is_base else "#8c8c8c" for is_base in experiments["is_base"]]
+        colours = [STRATEGY_COLOUR if is_base else MID_GREY for is_base in experiments["is_base"]]
         axis.barh(positions, gaps, color=colours, height=0.7)
-        axis.axvline(0, color="black", linewidth=0.8)
+        axis.axvline(0, color=INK, linewidth=0.8)
         axis.set_title(title, fontsize=10)
         axis.grid(axis="x", alpha=0.3)
 
     axes[0].set_yticks(list(positions), labels, fontsize=8)
     axes[0].invert_yaxis()
-    figure.suptitle("Strategy minus buy-and-hold for each setting (black = base settings; "
+    figure.suptitle("Strategy minus buy-and-hold for each setting (orange = base settings; "
                     "right of zero = strategy better)", fontsize=11)
     figure.tight_layout()
     return figure
@@ -221,7 +242,7 @@ def plot_walk_forward(folds: pd.DataFrame, chained_returns: pd.DataFrame, names:
                          linestyle=line_style, label=display_name(name))
 
     year_axis.set_xticks(range(len(years)), years)
-    year_axis.axhline(0, color="black", linewidth=0.8)
+    year_axis.axhline(0, color=INK, linewidth=0.8)
     year_axis.set_ylabel("Return in test year (%)")
     year_axis.set_title("Out-of-sample return in each test year")
     year_axis.legend(frameon=False, fontsize=8)
@@ -245,7 +266,7 @@ def plot_calendar_year_returns(yearly_returns: pd.DataFrame):
                  color=_portfolio_colour(name), label=display_name(name))
 
     axis.set_xticks(range(len(yearly_returns)), yearly_returns.index)
-    axis.axhline(0, color="black", linewidth=0.8)
+    axis.axhline(0, color=INK, linewidth=0.8)
     axis.set_ylabel("Return (%)")
     axis.set_title("Calendar-year returns (first and last years may be partial)")
     axis.legend(frameon=False, fontsize=9)

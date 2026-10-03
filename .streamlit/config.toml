@@ -1,4 +1,0 @@
-# The charts are drawn with matplotlib on a white background, so the
-# dashboard uses the light theme to match them.
-[theme]
-base = "light"

@@ -60,6 +60,7 @@ from src.strategy.config import (  # noqa: E402
 )
 from src.strategy.regimes import add_vix_regimes  # noqa: E402
 from src.visualization.charts import (  # noqa: E402
+    DASHBOARD_STYLE,
     plot_backtest,
     plot_benchmark_comparison,
     plot_calendar_year_returns,
@@ -110,62 +111,64 @@ def run_validation(_market_data: pd.DataFrame, settings: StrategySettings,
     return run_walk_forward(_market_data, settings, fixed_nifty_weight)
 
 
-def show(figure) -> None:
-    """Draw a matplotlib figure in the page and free its memory."""
-    st.pyplot(figure, clear_figure=True)
+def show(plot, *args, **kwargs) -> None:
+    """Draw a chart with a transparent background, readable in light and dark mode."""
+    with plt.rc_context(DASHBOARD_STYLE):
+        figure = plot(*args, **kwargs)
+        st.pyplot(figure, clear_figure=True)
     plt.close(figure)
 
 
 # ---------------------------------------------------------------------------
-# Sidebar: every tuneable setting
+# Sidebar: every tuneable setting, grouped in collapsible sections
 # ---------------------------------------------------------------------------
 
 def sidebar_settings(market_data: pd.DataFrame) -> tuple[StrategySettings, BenchmarkConfig]:
     """Read all settings from the sidebar. Stops the app if they are invalid."""
-    sidebar = st.sidebar
     first_date, last_date = market_data.index[0].date(), market_data.index[-1].date()
 
-    sidebar.header("Settings")
+    st.sidebar.header("Settings")
+    st.sidebar.caption("Light / dark mode: ⋮ menu (top right) → System / Light / Dark.")
 
-    sidebar.subheader("Investment")
-    initial_capital = sidebar.number_input("Initial amount (₹)", min_value=1_000,
-                                           value=100_000, step=10_000)
-    start_date = sidebar.date_input("Start investing on", value=first_date,
-                                    min_value=first_date, max_value=last_date)
-    end_date = sidebar.date_input("End on", value=last_date,
-                                  min_value=first_date, max_value=last_date)
+    with st.sidebar.expander("Investment", expanded=True):
+        initial_capital = st.number_input("Initial amount (₹)", min_value=1_000,
+                                          value=100_000, step=10_000)
+        start_date = st.date_input("Start investing on", value=first_date,
+                                   min_value=first_date, max_value=last_date)
+        end_date = st.date_input("End on", value=last_date,
+                                 min_value=first_date, max_value=last_date)
 
-    sidebar.subheader("VIX signal")
-    window_type = sidebar.radio("Percentile window", ["expanding", "rolling"], horizontal=True,
-                                help="Expanding: compare with all VIX history so far. "
-                                     "Rolling: compare with the last N trading days only.")
-    rolling_window = 504
-    if window_type == "rolling":
-        rolling_window = sidebar.slider("Rolling window (trading days)", 63, 1260, 504, step=21,
-                                        help="252 ≈ 1 year, 504 ≈ 2 years")
-    min_history = sidebar.slider("Warm-up (trading days)", 21, 504, 252, step=21,
-                                 help="VIX history needed before the first regime.")
-    low = sidebar.slider("Low regime below percentile", 1, 98, 25)
-    high = sidebar.slider("High regime from percentile", 2, 98, 75)
-    extreme = sidebar.slider("Extreme regime from percentile", 3, 99, 95)
+    with st.sidebar.expander("VIX signal"):
+        window_type = st.radio("Percentile window", ["expanding", "rolling"], horizontal=True,
+                               help="Expanding: compare with all VIX history so far. "
+                                    "Rolling: compare with the last N trading days only.")
+        rolling_window = 504
+        if window_type == "rolling":
+            rolling_window = st.slider("Rolling window (trading days)", 63, 1260, 504, step=21,
+                                       help="252 ≈ 1 year, 504 ≈ 2 years")
+        min_history = st.slider("Warm-up (trading days)", 21, 504, 252, step=21,
+                                help="VIX history needed before the first regime.")
+        low = st.slider("Low regime below percentile", 1, 98, 25)
+        high = st.slider("High regime from percentile", 2, 98, 75)
+        extreme = st.slider("Extreme regime from percentile", 3, 99, 95)
 
-    sidebar.subheader("NIFTY allocation by regime (%)")
-    weights = {regime: sidebar.slider(regime.capitalize(), 0, 100, default, step=5)
-               for regime, default in zip(REGIME_LABELS, [100, 75, 50, 25], strict=True)}
+    with st.sidebar.expander("NIFTY allocation by regime (%)"):
+        weights = {regime: st.slider(regime.capitalize(), 0, 100, default, step=5)
+                   for regime, default in zip(REGIME_LABELS, [100, 75, 50, 25], strict=True)}
 
-    sidebar.subheader("Trading")
-    frequency = sidebar.selectbox("Rebalancing", ["weekly", "daily", "monthly"])
-    drift = sidebar.slider("Drift band (weight points)", 0, 30, 5,
-                           help="Trade back to target if the actual NIFTY weight is "
-                                "further than this from target.")
-    execution_price = sidebar.radio("Trade at the next day's", ["close", "open"], horizontal=True)
-    cost_percent = sidebar.number_input("Transaction cost (% of traded value)", 0.0, 2.0, 0.10,
-                                        step=0.05, format="%.2f")
-    cash_percent = sidebar.number_input("Cash return / risk-free rate (% per year)", 0.0, 15.0,
-                                        6.0, step=0.5, format="%.1f")
+    with st.sidebar.expander("Trading"):
+        frequency = st.selectbox("Rebalancing", ["weekly", "daily", "monthly"])
+        drift = st.slider("Drift band (weight points)", 0, 30, 5,
+                          help="Trade back to target if the actual NIFTY weight is "
+                               "further than this from target.")
+        execution_price = st.radio("Trade at the next day's", ["close", "open"], horizontal=True)
+        cost_percent = st.number_input("Transaction cost (% of traded value)", 0.0, 2.0, 0.10,
+                                       step=0.05, format="%.2f")
+        cash_percent = st.number_input("Cash return / risk-free rate (% per year)", 0.0, 15.0,
+                                       6.0, step=0.5, format="%.1f")
 
-    sidebar.subheader("Benchmark")
-    fixed_weight = sidebar.slider("Fixed-allocation benchmark NIFTY weight (%)", 5, 95, 75, step=5)
+    with st.sidebar.expander("Benchmark"):
+        fixed_weight = st.slider("Fixed-allocation NIFTY weight (%)", 5, 95, 75, step=5)
 
     try:
         settings = StrategySettings(
@@ -258,7 +261,7 @@ def data_tab(market_data: pd.DataFrame, dropped: dict) -> None:
         f"{len(dropped['only_in_vix'])} VIX-only and {len(dropped['only_in_nifty'])} "
         "NIFTY-only dates were dropped."
     )
-    show(plot_market_with_regimes(market_data, show_regimes=False))
+    show(plot_market_with_regimes, market_data, show_regimes=False)
     st.subheader("Descriptive statistics")
     st.dataframe(describe_market_data(market_data).round(4))
 
@@ -276,12 +279,12 @@ def strategy_tab(settings: StrategySettings, market_data: pd.DataFrame) -> None:
     st.table(rules)
 
     regime_data = add_vix_regimes(market_data, regime)
-    show(plot_market_with_regimes(regime_data))
-    show(plot_vix_percentile(regime_data, regime))
+    show(plot_market_with_regimes, regime_data)
+    show(plot_vix_percentile, regime_data, regime)
 
     frequency = regime_frequency(regime_data)
     behaviour = nifty_behaviour_by_regime(regime_data)
-    show(plot_regime_summary(frequency, behaviour))
+    show(plot_regime_summary, frequency, behaviour)
     st.subheader("NIFTY on the day after each regime")
     st.caption("Descriptive only: uses returns after each day's regime was known.")
     table = behaviour.copy()
@@ -292,7 +295,7 @@ def strategy_tab(settings: StrategySettings, market_data: pd.DataFrame) -> None:
 
 
 def backtest_tab(history: pd.DataFrame) -> None:
-    show(plot_backtest(history))
+    show(plot_backtest, history)
     trades = history[history["traded"]][
         ["vix_regime", "tradable_target_weight", "trade_value", "transaction_cost",
          "nifty_weight", "portfolio_value"]
@@ -312,14 +315,14 @@ def risk_tab(histories: dict, comparison: pd.DataFrame) -> None:
     st.subheader("Calendar-year returns")
     yearly = pd.DataFrame({name: calendar_year_returns(history["portfolio_return"])
                            for name, history in histories.items()})
-    show(plot_calendar_year_returns(yearly))
+    show(plot_calendar_year_returns, yearly)
     st.dataframe(format_percent_table(yearly.rename(columns=display_name)))
 
 
 def comparison_tab(histories: dict, comparison: pd.DataFrame) -> None:
     st.caption("All portfolios use the same dates, initial amount, transaction costs, "
                "cash rate and execution settings. Only the target NIFTY weight differs.")
-    show(plot_benchmark_comparison(portfolio_values(histories)))
+    show(plot_benchmark_comparison, portfolio_values(histories))
     st.table(format_metrics_table(comparison))
 
 
@@ -337,7 +340,7 @@ def experiments_tab(market_data: pd.DataFrame, settings: StrategySettings,
         return
 
     experiments = run_experiments(market_data, settings, benchmark.fixed_nifty_weight)
-    show(plot_sensitivity_overview(experiments))
+    show(plot_sensitivity_overview, experiments)
     name = st.selectbox("Experiment details", experiments["experiment"].unique())
     rows = experiments[experiments["experiment"] == name].set_index("variant")
     percent_columns = ["strategy_cagr", "strategy_annualised_volatility", "strategy_max_drawdown",
@@ -369,7 +372,7 @@ def walk_forward_tab(market_data: pd.DataFrame, settings: StrategySettings,
 
     folds, chained = run_validation(market_data, settings, benchmark.fixed_nifty_weight)
     names = portfolio_order(benchmark.fixed_nifty_weight)
-    show(plot_walk_forward(folds, chained, names))
+    show(plot_walk_forward, folds, chained, names)
 
     st.subheader("Chained out-of-sample performance")
     summary = out_of_sample_summary(chained[names], settings.backtest.cash_annual_rate)

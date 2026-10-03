@@ -40,7 +40,7 @@ India VIX + NIFTY 50 Data
 
 ## Setup
 
-Requires Python 3.14 and [uv](https://docs.astral.sh/uv/). The raw data is committed, so no download is needed.
+Requires Python 3.12 or newer (developed on 3.14) and [uv](https://docs.astral.sh/uv/). The raw data is committed, so no download is needed.
 
 ```bash
 uv sync                                  # create .venv and install dependencies
@@ -69,6 +69,17 @@ Without uv: `pip install -r requirements.txt pytest`, then use `streamlit run ..
 | Walk-forward | Out-of-sample validation around the current settings (button, ~10 s) |
 
 The app has no financial logic of its own; it calls the same functions as `main.py`.
+
+Light / dark mode: use the ⋮ menu (top right) → System / Light / Dark. Charts have transparent backgrounds and colours chosen to be readable in both.
+
+## Deploying (Streamlit Community Cloud, free)
+
+1. Push the repository to GitHub (it must include `requirements.txt` and `data/raw/`; the app reads the committed data and never downloads at start-up).
+2. Sign in at [share.streamlit.io](https://share.streamlit.io) with GitHub and choose **Create app → Deploy a public app from GitHub**.
+3. Repository `Rithvik-Rajesh/dynamic-portfolio-allocation`, branch `main`, main file path `app/streamlit_app.py`.
+4. Under **Advanced settings**, pick Python 3.12 or newer, then **Deploy**.
+
+Every push to `main` redeploys the app. Free apps sleep after a period without visitors and wake on the next visit. The Experiments and Walk-forward tabs are slower on the shared cloud CPU than locally.
 
 ## Repository Structure
 

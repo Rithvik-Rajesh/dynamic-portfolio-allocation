@@ -136,6 +136,8 @@ typing-extensions==4.16.0
     #   altair
     #   anyio
     #   beautifulsoup4
+    #   referencing
+    #   starlette
     #   streamlit
 tzdata==2026.3 ; sys_platform == 'emscripten' or sys_platform == 'win32'
     # via pandas
