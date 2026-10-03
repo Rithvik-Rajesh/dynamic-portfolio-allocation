@@ -62,6 +62,7 @@ src/data/cleaner.py           Clean and align VIX/NIFTY (Milestone 2)
 src/data/validator.py         Validation checks + descriptive stats (Milestone 2)
 src/config.py                 (also) output file locations
 src/rates.py                  Cash / risk-free rate conversion (shared)
+src/pipeline.py               run_vix_strategy(): one call, any settings
 src/strategy/config.py        ALL strategy + backtest assumptions
 src/strategy/regimes.py       Expanding VIX percentile + regimes (Milestone 3)
 src/strategy/allocation.py    Regime -> target NIFTY/cash weight (Milestone 4)
@@ -89,10 +90,10 @@ Source and download time are recorded in `data/raw/metadata.json`.
 
 ## Methodology Notes and Assumptions
 
-- **Closing values only.** Daily close of VIX and NIFTY.
+- **Prices used.** Daily VIX close; NIFTY close (and NIFTY open, only when trading at the open).
 - **Alignment.** A date is kept only if both series have a close (inner join). Prices are never forward-filled. NIFTY returns are calculated after alignment, so no price movement is lost when a date is dropped.
 - **Price index.** `^NSEI` is the NIFTY 50 price index; dividends are not included. This understates equity returns and will slightly favour strategies that hold less equity. This is a known limitation.
-- **VIX percentile.** Expanding percentile: on day *t*, the share of all VIX closes from the start of the data up to and including day *t* that are ≤ VIX(*t*). No future data is used. The first 252 trading days are a warm-up period with no regime, so regimes start in January 2016.
+- **VIX percentile.** On day *t*, the share of VIX closes in the comparison window that are ≤ VIX(*t*). The window always ends on day *t*, so no future data is used. **Expanding** (default): all VIX history since the start of the data. **Rolling**: only the last *N* trading days. The first 252 trading days are a warm-up period with no regime, so regimes start in January 2016.
 - **Regimes** (configurable in `src/strategy/config.py`): low < 25th percentile ≤ normal < 75th ≤ high < 95th ≤ extreme.
 - **Timing.** A regime is known only at the close of day *t*, so it can only affect returns from day *t+1* onwards.
 
@@ -100,15 +101,21 @@ Source and download time are recorded in `data/raw/metadata.json`.
 
 | Assumption | Default | Notes |
 |---|---|---|
-| Allocation by regime | Low 100% · Normal 75% · High 50% · Extreme 25% | Rest in cash. No leverage, no shorting. |
-| Execution | Next day's close | Regime from close *t* is traded at close *t+1*. |
+| Regime thresholds | 25th / 75th / 95th percentile | `RegimeConfig.low_threshold`, `high_threshold`, `extreme_threshold`. |
+| Percentile window | Expanding | `RegimeConfig.percentile_window` = `"expanding"` or `"rolling"`; `rolling_window` = 504 trading days (≈2 years) when rolling. |
+| Warm-up | 252 trading days | `RegimeConfig.min_history`. Must not exceed the rolling window. |
+| Allocation by regime | Low 100% · Normal 75% · High 50% · Extreme 25% | `AllocationConfig`. Rest in cash. No leverage, no shorting. |
+| Execution | Next day's close | `BacktestConfig.execution_price` = `"close"` or `"open"`; `execution_lag_days` = 1. Trading at the open needs a lag of at least 1. |
 | Rebalancing | Weekly | Trades only on the first trading day of each week (or month / every day). |
 | Drift band | 5 weight points | On a rebalance day, trade if the target changed or the actual weight is more than 5 points off target. |
 | Transaction cost | 0.10% of traded value | One simplified rate for brokerage, taxes, fees and slippage. Real Indian costs vary by broker, instrument and size. |
 | Cash return / risk-free rate | 6% p.a. | Approximates Indian T-bill / liquid-fund yields 2015–2025 (actual yields varied, roughly 3–8%). Accrues per calendar day. |
 | Initial capital | ₹100,000 | Starts in cash; the first trade invests it. |
+| Investment period | Whole dataset | `BacktestConfig.start_date` / `end_date` (`"YYYY-MM-DD"`). The VIX percentile still uses all VIX history before the start date, since it was known at the time. |
 
 Trades are sized so the weight is exactly on target after costs, and costs are paid from cash.
+
+All settings are passed to `src.pipeline.run_vix_strategy(market_data, regime_config, allocation_config, backtest_config)`. In `main.py` they are set at the top of `main()`.
 
 ### Metrics (`src/analysis/`)
 

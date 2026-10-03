@@ -9,7 +9,8 @@ def valid_data():
     dates = pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-03"])
     nifty = pd.Series([100.0, 101.0, 99.0], index=dates)
     return pd.DataFrame(
-        {"vix": [15.0, 16.0, 18.0], "nifty": nifty, "nifty_return": nifty.pct_change()},
+        {"vix": [15.0, 16.0, 18.0], "nifty_open": [100.0, 100.5, 100.0], "nifty": nifty,
+         "nifty_return": nifty.pct_change()},
         index=pd.Index(dates, name="date"),
     )
 
@@ -61,3 +62,9 @@ def test_missing_column_fails():
     assert find_validation_errors(valid_data().drop(columns="vix")) == [
         "Missing required columns: ['vix']"
     ]
+
+
+def test_implausible_overnight_gap_fails():
+    data = valid_data()
+    data.loc[data.index[2], "nifty_open"] = 50.0
+    assert any("overnight gap" in error for error in find_validation_errors(data))

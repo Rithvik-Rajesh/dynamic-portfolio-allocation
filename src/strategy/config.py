@@ -10,8 +10,12 @@ All defaults are illustrative starting points, not "correct" values.
 
 from dataclasses import dataclass
 
+import pandas as pd
+
 REGIME_LABELS = ["low", "normal", "high", "extreme"]
 REBALANCE_FREQUENCIES = ["daily", "weekly", "monthly"]
+PERCENTILE_WINDOWS = ["expanding", "rolling"]
+EXECUTION_PRICES = ["close", "open"]
 
 
 @dataclass(frozen=True)
@@ -23,15 +27,25 @@ class RegimeConfig:
     high_threshold    <= percentile < extreme_threshold -> high
     extreme_threshold <= percentile                  -> extreme
 
+    percentile_window: which past VIX values each day is compared with.
+        'expanding'  all VIX history from the first day of data up to today.
+                     Long memory: old calm or crisis periods never drop out.
+        'rolling'    only the most recent `rolling_window` trading days
+                     (including today). Adapts to the recent VIX level.
+    rolling_window: length of the rolling window in trading days
+        (252 = about 1 year, 504 = about 2 years). Ignored for 'expanding'.
     min_history: number of trading days of VIX history required before a
-    percentile (and therefore a regime) is produced. Earlier days have no
-    regime. 252 trading days is about one year.
+        percentile (and therefore a regime) is produced. Earlier days have no
+        regime. 252 trading days is about one year. For a rolling window it
+        cannot exceed `rolling_window`.
     """
 
     low_threshold: float = 0.25
     high_threshold: float = 0.75
     extreme_threshold: float = 0.95
     min_history: int = 252
+    percentile_window: str = "expanding"
+    rolling_window: int = 504
 
     def __post_init__(self):
         if not 0 < self.low_threshold < self.high_threshold < self.extreme_threshold < 1:
@@ -42,6 +56,18 @@ class RegimeConfig:
             )
         if self.min_history < 1:
             raise ValueError(f"min_history must be at least 1, got {self.min_history}")
+        if self.percentile_window not in PERCENTILE_WINDOWS:
+            raise ValueError(
+                f"percentile_window must be one of {PERCENTILE_WINDOWS}, "
+                f"got '{self.percentile_window}'"
+            )
+        if self.percentile_window == "rolling" and self.min_history > self.rolling_window:
+            raise ValueError(
+                f"min_history ({self.min_history}) cannot exceed rolling_window "
+                f"({self.rolling_window})"
+            )
+        if self.rolling_window < 2:
+            raise ValueError(f"rolling_window must be at least 2, got {self.rolling_window}")
 
 
 @dataclass(frozen=True)
@@ -85,8 +111,18 @@ class BacktestConfig:
                            2015-2025. Also used as the risk-free rate in
                            Sharpe and Sortino ratios.
     execution_lag_days     trading days between the signal (VIX close) and the
-                           trade. 1 = the regime known at close t is traded at
-                           the close of t+1.
+                           trade. 1 = the regime known at close t is traded on
+                           day t+1.
+    execution_price        'close' or 'open': the NIFTY price the trade happens
+                           at on the execution day. 'open' needs a lag of at
+                           least 1, because the VIX close is not known at the
+                           same day's open.
+    start_date             first date the portfolio may invest ('YYYY-MM-DD'),
+                           or None for the first date with a signal. The VIX
+                           percentile still uses all VIX history before this
+                           date, because that history was known at the time.
+    end_date               last date of the backtest ('YYYY-MM-DD'), or None
+                           for the last date in the data.
     """
 
     initial_capital: float = 100_000.0
@@ -95,6 +131,9 @@ class BacktestConfig:
     transaction_cost_rate: float = 0.001
     cash_annual_rate: float = 0.06
     execution_lag_days: int = 1
+    execution_price: str = "close"
+    start_date: str | None = None
+    end_date: str | None = None
 
     def __post_init__(self):
         if self.initial_capital <= 0:
@@ -112,3 +151,15 @@ class BacktestConfig:
             raise ValueError("cash_annual_rate looks implausible (expected -5% to 50%)")
         if self.execution_lag_days < 0:
             raise ValueError("execution_lag_days cannot be negative")
+        if self.execution_price not in EXECUTION_PRICES:
+            raise ValueError(
+                f"execution_price must be one of {EXECUTION_PRICES}, got '{self.execution_price}'"
+            )
+        if self.execution_price == "open" and self.execution_lag_days < 1:
+            raise ValueError(
+                "Trading at the open needs execution_lag_days >= 1: the VIX close of a "
+                "day is not known at that day's open (look-ahead)."
+            )
+        start, end = self.start_date, self.end_date
+        if start is not None and end is not None and pd.Timestamp(start) >= pd.Timestamp(end):
+            raise ValueError("start_date must be before end_date")

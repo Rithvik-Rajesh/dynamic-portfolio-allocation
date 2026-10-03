@@ -9,11 +9,13 @@ from src.rates import period_rate, risk_free_returns
 from src.strategy.config import BacktestConfig
 
 
-def market(nifty_prices, start="2024-01-01"):
-    """Market data on consecutive business days."""
+def market(nifty_prices, start="2024-01-01", nifty_opens=None):
+    """Market data on consecutive business days. Opens default to the closes."""
     dates = pd.bdate_range(start, periods=len(nifty_prices))
     nifty = pd.Series(nifty_prices, index=dates, dtype=float)
-    return pd.DataFrame({"nifty": nifty, "nifty_return": nifty.pct_change()})
+    opens = nifty_prices if nifty_opens is None else nifty_opens
+    return pd.DataFrame({"nifty_open": pd.Series(opens, index=dates, dtype=float),
+                         "nifty": nifty, "nifty_return": nifty.pct_change()})
 
 
 def no_frictions(**overrides):
@@ -162,3 +164,80 @@ def test_rates_compound_to_annual_rate():
     assert period_rate(0.06, 365) == pytest.approx(0.06)
     dates = pd.DatetimeIndex(["2024-01-05", "2024-01-08"])  # Friday -> Monday
     assert risk_free_returns(dates, 0.06).tolist() == pytest.approx([0.0, 1.06 ** (3 / 365) - 1])
+
+
+# --- Investment period ------------------------------------------------------
+
+def test_start_and_end_dates_limit_the_backtest():
+    data = market([100, 101, 102, 103, 104, 105, 106])  # Mon 1 Jan .. Tue 9 Jan 2024
+    target = pd.Series(1.0, index=data.index)
+    history = run_backtest(data, target, no_frictions(start_date="2024-01-03",
+                                                      end_date="2024-01-08"))
+    assert history.index[0] == pd.Timestamp("2024-01-03")
+    assert history.index[-1] == pd.Timestamp("2024-01-08")
+    # Invested at 102 on the start date.
+    assert history["portfolio_value"].iloc[-1] == pytest.approx(1000 * 105 / 102)
+
+
+def test_start_date_before_first_signal_starts_at_first_signal():
+    data = market([100, 101, 102, 103])
+    target = pd.Series([np.nan, 1.0, 1.0, 1.0], index=data.index)
+    history = run_backtest(data, target, no_frictions(start_date="2000-01-01"))
+    # Signal from day 1 is tradable on day 2 (lag 1).
+    assert history.index[0] == data.index[2]
+
+
+def test_period_too_short_raises():
+    data = market([100, 101, 102])
+    target = pd.Series(1.0, index=data.index)
+    with pytest.raises(ValueError, match="fewer than 2"):
+        run_backtest(data, target, no_frictions(start_date="2024-01-03"))
+
+
+def test_start_date_must_be_before_end_date():
+    with pytest.raises(ValueError):
+        BacktestConfig(start_date="2024-01-05", end_date="2024-01-01")
+
+
+# --- Trading at the open ----------------------------------------------------
+
+def test_open_execution_splits_overnight_and_intraday():
+    # Closes: 100, 100, 120.   Opens: 100, 110, 100 (day 2 opens down, closes up).
+    data = market([100, 100, 120], nifty_opens=[100, 110, 100])
+    target = pd.Series([1.0, 0.5, 0.5], index=data.index)  # day-1 signal traded on day 2
+    history = run_backtest(data, target, no_frictions(execution_price="open"))
+
+    # Day 1: invest 1000 at the open (110), NIFTY closes at 100 -> 1000 * 100/110.
+    day1 = 1000 * 100 / 110
+    assert history["portfolio_value"].iloc[0] == pytest.approx(day1)
+    # Day 2: overnight 100 -> 100 (flat), then sell to 50% at the open (100),
+    # then the NIFTY half rises 100 -> 120 during the day.
+    day2 = day1 * 0.5 * 1.2 + day1 * 0.5
+    assert history["portfolio_value"].iloc[1] == pytest.approx(day2)
+    assert history["nifty_weight"].iloc[1] == pytest.approx(0.6 / 1.1)
+
+
+def test_open_execution_reacts_before_the_day_moves():
+    """Same signal as the close test: open trading sells at day 3's open,
+    avoiding day 3's intraday fall; close trading sells after it."""
+    data = market([100, 100, 100, 50], nifty_opens=[100, 100, 100, 100])
+    target = pd.Series([1.0, 1.0, 0.0, 0.0], index=data.index)
+
+    at_open = run_backtest(data, target, no_frictions(execution_price="open"))
+    at_close = run_backtest(data, target, no_frictions(execution_price="close"))
+
+    assert at_open["portfolio_value"].iloc[-1] == pytest.approx(1000.0)
+    assert at_close["portfolio_value"].iloc[-1] == pytest.approx(500.0)
+
+
+def test_open_execution_with_flat_market_matches_close():
+    data = market([100, 100, 100, 100])
+    target = pd.Series([1.0, 0.5, 0.5, 0.25], index=data.index)
+    at_open = run_backtest(data, target, no_frictions(execution_price="open"))
+    at_close = run_backtest(data, target, no_frictions(execution_price="close"))
+    pd.testing.assert_frame_equal(at_open, at_close)
+
+
+def test_open_execution_without_lag_is_rejected():
+    with pytest.raises(ValueError, match="look-ahead"):
+        BacktestConfig(execution_price="open", execution_lag_days=0)

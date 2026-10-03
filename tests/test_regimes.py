@@ -121,3 +121,53 @@ def test_behaviour_uses_next_day_returns():
     frequency = regime_frequency(data)
     assert frequency.loc["low", "days"] == 3
     assert frequency["share"].sum() == pytest.approx(1.0)
+
+
+# --- Rolling window ----------------------------------------------------------
+
+def test_rolling_percentile_hand_calculated():
+    # Window of 3, at least 2 observations:
+    # day 2 [10, 20] -> 20 is 2/2; day 3 [10, 20, 15] -> 2/3; day 4 [20, 15, 30] -> 3/3;
+    # day 5 [15, 30, 5] -> 1/3; day 6 [30, 5, 12] -> 2/3
+    percentile = calculate_vix_percentile(series([10, 20, 15, 30, 5, 12]), min_history=2,
+                                          rolling_window=3)
+    assert np.isnan(percentile.iloc[0])
+    assert percentile.iloc[1:].tolist() == pytest.approx([1.0, 2 / 3, 1.0, 1 / 3, 2 / 3])
+
+
+def test_rolling_window_forgets_old_spike():
+    # A spike to 80 on day 0. Five days later VIX is 20.
+    vix = series([80, 10, 10, 10, 10, 20])
+    expanding = calculate_vix_percentile(vix, min_history=1)
+    rolling = calculate_vix_percentile(vix, min_history=1, rolling_window=5)
+    assert expanding.iloc[-1] == pytest.approx(5 / 6)  # the spike still counts
+    assert rolling.iloc[-1] == pytest.approx(1.0)      # the spike has dropped out
+
+
+def test_rolling_percentile_has_no_look_ahead():
+    rng = np.random.default_rng(seed=0)
+    vix = series(rng.uniform(10, 40, size=400))
+    original = calculate_vix_percentile(vix, min_history=50, rolling_window=100)
+    altered_future = vix.copy()
+    altered_future.iloc[300:] = 1000.0
+    altered = calculate_vix_percentile(altered_future, min_history=50, rolling_window=100)
+    pd.testing.assert_series_equal(original.iloc[:300], altered.iloc[:300])
+
+
+def test_add_vix_regimes_uses_rolling_setting():
+    market_data = pd.DataFrame({"vix": series([80, 10, 10, 10, 10, 20])})
+    rolling = add_vix_regimes(market_data, RegimeConfig(min_history=1, percentile_window="rolling",
+                                                        rolling_window=5))
+    expanding = add_vix_regimes(market_data, RegimeConfig(min_history=1))
+    assert rolling["vix_regime"].iloc[-1] == "extreme"
+    assert expanding["vix_regime"].iloc[-1] == "high"
+
+
+@pytest.mark.parametrize("settings", [
+    {"percentile_window": "weekly"},
+    {"percentile_window": "rolling", "rolling_window": 100, "min_history": 252},
+    {"percentile_window": "rolling", "rolling_window": 1, "min_history": 1},
+])
+def test_invalid_window_settings_rejected(settings):
+    with pytest.raises(ValueError):
+        RegimeConfig(**settings)

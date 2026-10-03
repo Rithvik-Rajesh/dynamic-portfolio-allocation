@@ -6,7 +6,8 @@
 
 import pandas as pd
 
-REQUIRED_COLUMNS = ["vix", "nifty", "nifty_return"]
+REQUIRED_COLUMNS = ["vix", "nifty_open", "nifty", "nifty_return"]
+PRICE_COLUMNS = ["vix", "nifty_open", "nifty"]
 
 # Sanity bounds. These are not filters: data outside them stops the pipeline
 # so a human can look at it. India VIX traded roughly 9-84 during 2015-2025,
@@ -41,7 +42,7 @@ def find_validation_errors(market_data: pd.DataFrame) -> list[str]:
     if errors:
         return errors
 
-    for column in ["vix", "nifty"]:
+    for column in PRICE_COLUMNS:
         if market_data[column].isna().any():
             errors.append(f"Column '{column}' has missing values.")
         if (market_data[column] <= 0).any():
@@ -56,6 +57,14 @@ def find_validation_errors(market_data: pd.DataFrame) -> list[str]:
         errors.append(
             f"VIX outside plausible range [{VIX_MIN_PLAUSIBLE}, {VIX_MAX_PLAUSIBLE}]: "
             f"min={vix.min():.2f}, max={vix.max():.2f}"
+        )
+
+    overnight_gap = market_data["nifty_open"] / market_data["nifty"].shift(1) - 1
+    largest_gap = overnight_gap.abs().max()
+    if largest_gap > MAX_ABS_DAILY_RETURN:
+        errors.append(
+            f"NIFTY overnight gap (open vs previous close) of {largest_gap:.1%} exceeds "
+            f"the {MAX_ABS_DAILY_RETURN:.0%} sanity limit."
         )
 
     largest_move = market_data["nifty_return"].abs().max()
@@ -78,7 +87,7 @@ def validate_market_data(market_data: pd.DataFrame) -> None:
 def describe_market_data(market_data: pd.DataFrame) -> pd.DataFrame:
     """Basic descriptive statistics for VIX, NIFTY and NIFTY daily returns."""
     summary = market_data[REQUIRED_COLUMNS].describe().T
-    summary["unchanged_days"] = (market_data[REQUIRED_COLUMNS[:2]].diff() == 0).sum()
+    summary["unchanged_days"] = (market_data[PRICE_COLUMNS].diff() == 0).sum()
     return summary
 
 

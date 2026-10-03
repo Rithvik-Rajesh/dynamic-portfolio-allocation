@@ -17,7 +17,6 @@ from src.analysis.regime_analysis import (
     regime_changes,
     regime_frequency,
 )
-from src.backtesting.engine import add_signal_columns, run_backtest
 from src.config import BACKTEST_FILE, FIGURES_DIR, MARKET_DATA_FILE, VIX_REGIMES_FILE
 from src.data.cleaner import build_market_data, save_market_data, unmatched_dates
 from src.data.loader import load_raw_data
@@ -26,7 +25,7 @@ from src.data.validator import (
     describe_market_data,
     validate_market_data,
 )
-from src.strategy.allocation import add_target_allocation
+from src.pipeline import run_vix_strategy
 from src.strategy.config import AllocationConfig, BacktestConfig, RegimeConfig
 from src.strategy.regimes import add_vix_regimes
 from src.visualization.charts import (
@@ -88,15 +87,15 @@ def analyse_regimes(market_data: pd.DataFrame, config: RegimeConfig) -> pd.DataF
     return regime_data
 
 
-def backtest_strategy(regime_data: pd.DataFrame, allocation_config: AllocationConfig,
+def backtest_strategy(market_data: pd.DataFrame, regime_config: RegimeConfig,
+                      allocation_config: AllocationConfig,
                       backtest_config: BacktestConfig) -> pd.DataFrame:
     """Milestones 4-6: target allocation, backtest and performance metrics."""
-    strategy_data = add_target_allocation(regime_data, allocation_config)
-    history = run_backtest(strategy_data, strategy_data["target_nifty_weight"], backtest_config)
-    history = add_signal_columns(history, strategy_data)
+    history = run_vix_strategy(market_data, regime_config, allocation_config, backtest_config)
     history.to_csv(BACKTEST_FILE)
 
-    print_section("Strategy")
+    print_section("Strategy settings")
+    print(regime_config)
     print(allocation_config)
     print(backtest_config)
 
@@ -117,9 +116,16 @@ def main(refresh: bool = False) -> None:
     pd.set_option("display.max_columns", None)
     pd.set_option("display.float_format", "{:.4f}".format)
 
+    # Every tuneable setting lives in these three objects. Change them here
+    # (e.g. RegimeConfig(percentile_window="rolling", rolling_window=504) or
+    # BacktestConfig(start_date="2018-01-01", execution_price="open")).
+    regime_config = RegimeConfig()
+    allocation_config = AllocationConfig()
+    backtest_config = BacktestConfig()
+
     market_data = prepare_market_data(refresh)
-    regime_data = analyse_regimes(market_data, RegimeConfig())
-    backtest_strategy(regime_data, AllocationConfig(), BacktestConfig())
+    analyse_regimes(market_data, regime_config)
+    backtest_strategy(market_data, regime_config, allocation_config, backtest_config)
     print(f"\nCharts saved -> {FIGURES_DIR}")
 
 
